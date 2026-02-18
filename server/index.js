@@ -13,7 +13,15 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: [
+        "http://localhost:8080",
+        "http://localhost:8081",
+        "https://national-digital-bank-jmw2.vercel.app"
+    ],
+    credentials: true
+}));
+
 app.use(helmet());
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
