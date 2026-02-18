@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: "https://national-digital-bank-backend.onrender.com/api",
+  baseURL: "https://nationaldigitalbank-0ufr.onrender.com/",
   headers: {
     "Content-Type": "application/json",
   },
