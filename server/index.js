@@ -23,11 +23,12 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 };
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-app.use(helmet());
-app.use(morgan('dev'));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
 
 // Database Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/instant-account-ai', {
