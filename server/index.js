@@ -14,13 +14,27 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(express.json());
 app.use(cors({
-    origin: [
-        "http://localhost:8080",
-        "http://localhost:8081",
-        "https://national-digital-bank-jmw2.vercel.app/"
-    ],
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            "http://localhost:8080",
+            "http://localhost:8081",
+            "https://national-digital-bank-jmw2.vercel.app"
+        ];
+
+        // Allow server-to-server / Postman / curl
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
+
 
 app.use(helmet());
 app.use(morgan('dev'));
