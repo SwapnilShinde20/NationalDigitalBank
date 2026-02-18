@@ -17,11 +17,11 @@ app.use(cors({
     origin: [
         "http://localhost:8080",
         "http://localhost:8081",
-        "https://national-digital-bank-jmw2.vercel.app"
+        "https://national-digital-bank-jmw2.vercel.app/"
     ],
     credentials: true
 }));
-app.options("*", cors());
+
 app.use(helmet());
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -58,5 +58,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/application', applicationRoutes);
 
-module.exports = app;
-
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
