@@ -21,7 +21,7 @@ app.use(cors({
     ],
     credentials: true
 }));
-
+app.options("*", cors());
 app.use(helmet());
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -58,6 +58,5 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/application', applicationRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+module.exports = app;
+
