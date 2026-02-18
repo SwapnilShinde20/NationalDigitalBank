@@ -44,6 +44,8 @@ const AdminLogin = () => {
                     <Shield className="w-12 h-12 text-red-500 mx-auto mb-3" />
                     <h1 className="text-xl font-bold">Restricted Access</h1>
                     <p className="text-sm text-slate-400">Bank Officer Portal</p>
+                    <div>mail-admin@ndb.gov.in</div>
+                    <div>admin123</div>
                 </div>
                 
                 <div className="p-8 space-y-6">
