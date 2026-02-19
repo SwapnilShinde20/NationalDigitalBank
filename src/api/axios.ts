@@ -1,10 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: "https://nationaldigitalbank-0ufr.onrender.com/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
+   baseURL: `${import.meta.env.VITE_API_URL}/api`,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
 // Add a request interceptor to attach the token
