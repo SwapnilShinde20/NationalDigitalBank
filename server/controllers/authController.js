@@ -99,10 +99,11 @@ exports.verifyMobileOTP = async (req, res) => {
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     // Set HTTP-only cookie
+    const isProd = process.env.NODE_ENV === 'production' || req.hostname !== 'localhost';
     res.cookie('authToken', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProd || req.secure || req.headers['x-forwarded-proto'] === 'https',
+        sameSite: isProd ? 'none' : 'lax', // 'none' is required for cross-site cookies
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
@@ -284,8 +285,7 @@ exports.verifyEmailLink = async (req, res) => {
     });
 
     // 3. Redirect to Frontend Success Page
-    // Assuming Frontend runs on port 8080 or 5173
-    const frontendSuccessUrl = "http://localhost:8080/email-verified-success";
+    const frontendSuccessUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"}/email-verified-success`;
     res.redirect(frontendSuccessUrl);
 
   } catch (error) {

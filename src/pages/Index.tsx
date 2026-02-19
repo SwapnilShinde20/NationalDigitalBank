@@ -49,7 +49,7 @@ const Index = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate('/admin')}
+            onClick={handleOfficerLogin}
             className="text-primary-foreground border-primary-foreground/30 bg-primary-foreground/10"
           >
             Admin Panel

@@ -10,10 +10,11 @@ router.post('/login', (req, res) => {
   if (email === 'admin@ndb.gov.in' && password === 'admin123') {
     const token = jwt.sign({ userId: 'admin', role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '24h' });
     
+    const isProd = process.env.NODE_ENV === 'production' || req.hostname !== 'localhost';
     res.cookie('authToken', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProd || req.secure || req.headers['x-forwarded-proto'] === 'https',
+        sameSite: isProd ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24h
     });
 

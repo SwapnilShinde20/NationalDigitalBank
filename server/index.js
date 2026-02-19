@@ -10,16 +10,18 @@ const cookieParser = require('cookie-parser');
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy (e.g. Nginx, Heroku, Cloudflare)
 const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
 const corsOptions = {
-  origin:  [
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [
     "http://localhost:8080",
     "http://localhost:8081",
-    "https://national-digital-bank.vercel.app"
+    "https://national-digital-bank.vercel.app",
+    "https://shindeswapnil.in"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
@@ -27,7 +29,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
