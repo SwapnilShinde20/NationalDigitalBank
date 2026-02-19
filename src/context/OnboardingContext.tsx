@@ -72,6 +72,12 @@ export interface OnboardingFormData {
   accountNumber: string;
   panStatus?: string;
   aadhaarStatus?: string;
+  // Identity matching fields
+  panExtractedName?: string;
+  panExtractedDOB?: string;
+  aadhaarExtractedName?: string;
+  aadhaarExtractedDOB?: string;
+  identityMismatch?: boolean;
 }
 
 const defaultFormData: OnboardingFormData = {
@@ -100,6 +106,12 @@ interface OnboardingContextType {
   goToStep: (step: number) => void;
   completedSteps: Set<number>;
   markComplete: (step: number) => void;
+  // Auth State
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  authLoading: boolean;
+  refreshAuth: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | null>(null);
@@ -115,107 +127,71 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
   const [formData, setFormData] = useState<OnboardingFormData>(defaultFormData);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
-  // Load initial data from Application API
-  useEffect(() => {
-    const loadData = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
-      try {
-        const res = await api.get('/application/me');
-        if (res.data?.success && res.data.application) {
-           const app = res.data.application;
-           const clean = (obj: any) => {
-               if (!obj || typeof obj !== 'object') return {};
-               return Object.fromEntries(
-                   Object.entries(obj).filter(([_, v]) => v !== undefined && v !== null)
-               );
-           };
-           
-           // Map Application schema → flat formData
-           const mapped: Partial<OnboardingFormData> = {
-               // Eligibility
-               ...(app.eligibility?.accountType ? { accountType: app.eligibility.accountType } : {}),
-               ...(app.eligibility?.residencyStatus ? { residencyStatus: app.eligibility.residencyStatus } : {}),
-               ...(app.eligibility?.consentGiven ? { termsAccepted: true, dataConsent: true } : {}),
-               // Verification
-               ...(app.verification?.mobile ? { mobileNumber: app.verification.mobile } : {}),
-               ...(app.verification?.mobileVerified ? { otpVerified: true } : {}),
-               ...(app.verification?.email ? { email: app.verification.email } : {}),
-               ...(app.verification?.emailVerified ? { emailVerified: true } : {}),
-               // Personal Info
-               ...clean(app.personalInfo),
-               // Address
-               ...(app.address?.currentAddress ? {
-                   currentAddressLine1: app.address.currentAddress.line1 || '',
-                   currentAddressLine2: app.address.currentAddress.line2 || '',
-                   currentCity: app.address.currentAddress.city || '',
-                   currentState: app.address.currentAddress.state || '',
-                   currentPincode: app.address.currentAddress.pinCode || '',
-               } : {}),
-               ...(app.address?.permanentAddress ? {
-                   permanentAddressLine1: app.address.permanentAddress.line1 || '',
-                   permanentAddressLine2: app.address.permanentAddress.line2 || '',
-                   permanentCity: app.address.permanentAddress.city || '',
-                   permanentState: app.address.permanentAddress.state || '',
-                   permanentPincode: app.address.permanentAddress.pinCode || '',
-               } : {}),
-               // KYC
-               ...(app.kyc?.panNumber ? { panNumber: app.kyc.panNumber } : {}),
-               ...(app.kyc?.aadhaarNumber ? { aadhaarNumber: app.kyc.aadhaarNumber } : {}),
-               ...(app.kyc?.panStatus === 'VALID' ? { panVerified: true } : {}),
-               ...(app.kyc?.aadhaarStatus === 'VALID' ? { aadhaarVerified: true } : {}),
-               // Employment
-               ...(app.employment ? {
-                   employmentType: app.employment.employmentType || '',
-                   employerName: app.employment.employerName || '',
-                   sourceOfIncome: app.employment.sourceOfIncome || '',
-                   taxResidency: app.employment.taxResidency || 'India',
-                   isPEP: app.employment.pepDeclaration || false,
-               } : {}),
-               // Risk
-               ...(app.riskProfile ? {
-                   riskScore: app.riskProfile.riskScore || 0,
-                   riskCategory: app.riskProfile.riskLevel || '',
-                   amlCleared: app.riskProfile.amlStatus === 'CLEAR',
-                   fraudCheckPassed: app.riskProfile.fraudStatus === 'CLEAR',
-                   riskFactors: app.riskProfile.riskFactors || [],
-               } : {}),
-               // Nominee
-               ...(app.nominee ? {
-                   nomineeName: app.nominee.fullName || '',
-                   nomineeRelationship: app.nominee.relationship || '',
-                   nomineeDOB: app.nominee.dob || '',
-                   nomineeAddress: app.nominee.address || '',
-               } : {}),
-               // Services
-               ...(app.services ? {
-                   debitCardType: app.services.debitCardType || 'classic',
-                   internetBanking: app.services.internetBanking ?? true,
-                   smsAlerts: app.services.smsAlerts ?? true,
-                   chequeBook: app.services.chequeBook ?? false,
-                   upiActivation: app.services.upiActivation ?? true,
-               } : {}),
-               // Account
-               ...(app.accountDetails?.accountNumber ? { accountNumber: app.accountDetails.accountNumber } : {}),
-           };
-
-           setFormData(prev => ({ ...prev, ...mapped }));
-           
-           // Restore step progress
-           if (app.currentStep && app.currentStep > 0) {
-               setCurrentStep(app.currentStep - 1); // Backend is 1-indexed, frontend is 0-indexed
-           }
-        }
-      } catch (err: any) {
-        console.log("Session init: No active application found or new user.");
-        if (err.response && err.response.status === 401) {
-            localStorage.removeItem('token');
-        }
+  const refreshAuth = useCallback(async () => {
+    try {
+      setAuthLoading(true);
+      const res = await api.get('/auth/session');
+      if (res.data?.success) {
+         setIsAuthenticated(true);
+         setIsAdmin(res.data.role === 'admin');
+         
+         // If user, load application data
+         if (res.data.role !== 'admin') {
+             try {
+                 const appRes = await api.get('/application/me');
+                 if (appRes.data?.success && appRes.data.application) {
+                     const app = appRes.data.application;
+                     const clean = (obj: any) => {
+                         if (!obj || typeof obj !== 'object') return {};
+                         return Object.fromEntries(
+                             Object.entries(obj).filter(([_, v]) => v !== undefined && v !== null)
+                         );
+                     };
+                     
+                     setFormData(prev => ({
+                         ...prev,
+                         ...clean(app.personalInfo),
+                         ...clean(app.address),
+                         ...clean(app.kyc),
+                         ...clean(app.employment),
+                         ...clean(app.nominee),
+                         ...clean(app.services),
+                         ...clean(app.verification),
+                         mobileNumber: app.verification?.mobile || '',
+                         otpVerified: app.verification?.mobileVerified || false,
+                         email: app.verification?.email || '',
+                         emailVerified: app.verification?.emailVerified || false,
+                         panNumber: app.kyc?.panNumber || '',
+                         aadhaarNumber: app.kyc?.aadhaarNumber || '',
+                     }));
+                     if (app.currentStep > 0) setCurrentStep(app.currentStep - 1);
+                 }
+             } catch (e) {
+                 console.log("No application found for user.");
+             }
+         }
+      } else {
+          setIsAuthenticated(false);
+          setIsAdmin(false);
       }
-    };
-    loadData();
+    } catch (err) {
+      console.log("Session check failed or no session.");
+      setIsAuthenticated(false);
+      setIsAdmin(false);
+    } finally {
+      setAuthLoading(false);
+    }
   }, []);
+
+  // Load initial session and data
+  useEffect(() => {
+    refreshAuth();
+  }, [refreshAuth]);
 
   // Determine which Application step a set of formData keys maps to
   const getStepMapping = (keys: string[]): { stepName: string; data: any } | null => {
@@ -310,8 +286,7 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const syncCurrentStep = async (stepIndex: number) => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!isAuthenticated) return;
 
       // Map step index to stepName
       const stepMap: Record<number, string[]> = {
@@ -373,8 +348,34 @@ export const OnboardingProvider = ({ children }: { children: ReactNode }) => {
     if (step >= 0 && step < ONBOARDING_STEPS.length) setCurrentStep(step);
   }, []);
 
+  const logout = async () => {
+      try {
+          await api.post('/auth/logout');
+          setIsAuthenticated(false);
+          setIsAdmin(false);
+          setFormData(defaultFormData);
+          setCurrentStep(0);
+      } catch (err) {
+          console.error("Logout failed", err);
+      }
+  };
+
   return (
-    <OnboardingContext.Provider value={{ currentStep, formData, updateFormData, nextStep, prevStep, goToStep, completedSteps, markComplete }}>
+    <OnboardingContext.Provider value={{ 
+        currentStep, 
+        formData, 
+        updateFormData, 
+        nextStep, 
+        prevStep, 
+        goToStep, 
+        completedSteps, 
+        markComplete,
+        isAuthenticated,
+        isAdmin,
+        authLoading,
+        refreshAuth,
+        logout
+    }}>
       {children}
     </OnboardingContext.Provider>
   );

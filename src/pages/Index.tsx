@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Shield, ArrowRight, Brain, Lock, FileCheck2, Users, BarChart3, Smartphone } from 'lucide-react';
+import { useOnboarding } from '@/context/OnboardingContext';
 
 const features = [
   { icon: Brain, title: 'AI-Powered KYC', desc: 'OCR document extraction and liveness detection' },
@@ -13,6 +14,23 @@ const features = [
 
 const Index = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, isAdmin } = useOnboarding();
+
+  const handleOpenAccount = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      navigate('/login');
+    }
+  };
+
+  const handleOfficerLogin = () => {
+    if (isAuthenticated && isAdmin) {
+      navigate('/admin');
+    } else {
+      navigate('/admin/login');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -57,7 +75,7 @@ const Index = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button
               size="lg"
-              onClick={() => navigate('/login')}
+              onClick={handleOpenAccount}
               className="banking-gradient-gold text-accent-foreground font-bold px-8 hover:opacity-90"
             >
               Open Account Now <ArrowRight className="w-4 h-4 ml-2" />
@@ -65,7 +83,7 @@ const Index = () => {
             <Button
               size="lg"
               variant="outline"
-              onClick={() => navigate('/admin/login')}
+              onClick={handleOfficerLogin}
               className="text-primary-foreground border-primary-foreground/30 bg-primary-foreground/10"
             >
               Bank Officer Login

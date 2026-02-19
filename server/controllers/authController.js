@@ -96,7 +96,15 @@ exports.verifyMobileOTP = async (req, res) => {
     await user.save();
 
     // 6. Generate Token
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // Set HTTP-only cookie
+    res.cookie('authToken', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
 
     // 7. Ensure Application Exists (Auto-create)
     const Application = require('../models/Application');
@@ -130,7 +138,6 @@ exports.verifyMobileOTP = async (req, res) => {
     res.json({
       success: true,
       message: 'Mobile verified successfully',
-      token,
       user
     });
 
@@ -302,5 +309,41 @@ exports.getUserProfile = async (req, res) => {
     console.error("Get Profile Error:", error);
     res.status(500).json({ success: false, message: 'Server error fetching profile' });
   }
+};
+
+// --- Session Check ---
+exports.checkSession = async (req, res) => {
+    try {
+        // Handle hardcoded admin
+        if (req.user.userId === 'admin') {
+            return res.json({
+                success: true,
+                user: { fullName: 'Bank Administrator', email: 'admin@ndb.gov.in' },
+                role: 'admin'
+            });
+        }
+
+        const user = await User.findById(req.user.userId).select('-password');
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Invalid session' });
+        }
+        res.json({
+            success: true,
+            user,
+            role: req.user.role || 'user'
+        });
+    } catch (error) {
+        console.error("Session check error:", error);
+        res.status(500).json({ success: false, message: 'Session check failed' });
+    }
+};
+
+// --- Logout ---
+exports.logout = (req, res) => {
+    res.clearCookie('authToken', { path: '/' });
+    res.json({
+        success: true,
+        message: 'Logged out successfully'
+    });
 };
 

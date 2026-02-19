@@ -5,7 +5,119 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { validatePAN, validateAadhaar } from '@/lib/validators';
 import AIProcessingOverlay from './AIProcessingOverlay';
-import { FileCheck2, Upload, CheckCircle2, AlertTriangle, ScanFace } from 'lucide-react';
+import { FileCheck2, Upload, CheckCircle2, AlertTriangle, ScanFace, XCircle, ShieldAlert, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface ErrorPopupProps {
+  title: string;
+  documentType: string;
+  confidenceScore: number;
+  riskFactors: string[];
+  identityMismatch: boolean;
+  extractedName?: string;
+  extractedDOB?: string;
+  userFullName?: string;
+  userDOB?: string;
+  onClose: () => void;
+}
+
+const ErrorPopup = ({ title, documentType, confidenceScore, riskFactors, identityMismatch, extractedName, extractedDOB, userFullName, userDOB, onClose }: ErrorPopupProps) => (
+  <AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.85, opacity: 0, y: 20 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className={`px-6 py-4 flex items-center gap-3 ${identityMismatch ? 'bg-gradient-to-r from-red-500 to-orange-500' : 'bg-gradient-to-r from-amber-500 to-orange-500'}`}>
+          <div className="p-2 bg-white/20 rounded-full">
+            {identityMismatch ? <ShieldAlert className="w-6 h-6 text-white" /> : <AlertTriangle className="w-6 h-6 text-white" />}
+          </div>
+          <div className="flex-1">
+            <h3 className="text-white font-bold text-lg">
+              {identityMismatch ? '🚨 Identity Mismatch Detected' : `${documentType} Verification Failed`}
+            </h3>
+            <p className="text-white/80 text-xs">
+              Confidence Score: {confidenceScore}%
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+            <X className="w-5 h-5 text-white" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          {identityMismatch && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-sm font-semibold text-red-800 mb-2">⚠️ The identity on your document does not match your application details.</p>
+              <div className="space-y-2 text-xs">
+                {extractedName && userFullName && (
+                  <div className="flex items-start gap-2">
+                    <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-red-700"><strong>Name on Document:</strong> {extractedName}</p>
+                      <p className="text-red-700"><strong>Name You Entered:</strong> {userFullName}</p>
+                    </div>
+                  </div>
+                )}
+                {extractedDOB && userDOB && (
+                  <div className="flex items-start gap-2">
+                    <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-red-700"><strong>DOB on Document:</strong> {extractedDOB}</p>
+                      <p className="text-red-700"><strong>DOB You Entered:</strong> {userDOB}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Risk Factors */}
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">Issues Found:</p>
+            <ul className="space-y-2">
+              {riskFactors.map((factor, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-gray-600">{factor}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Guidance */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <p className="text-xs text-blue-800">
+              {identityMismatch
+                ? '💡 Please ensure you upload documents that belong to you. The name and date of birth on your KYC documents must match the personal information you provided. Upload the correct documents and try again.'
+                : '💡 Please re-upload a clearer image of your document. Ensure the document number is clearly visible and matches what you entered.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-gray-50 border-t">
+          <Button onClick={onClose} className="w-full">
+            {identityMismatch ? 'Upload Correct Document' : 'Try Again'}
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  </AnimatePresence>
+);
 
 const StepKYC = () => {
   const { formData, updateFormData, nextStep, prevStep } = useOnboarding();
@@ -15,6 +127,7 @@ const StepKYC = () => {
   const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
   const [panStatus, setPanStatus] = useState<'PENDING' | 'VALID' | 'INVALID' | 'BLURRY'>('PENDING');
   const [aadhaarStatus, setAadhaarStatus] = useState<'PENDING' | 'VALID' | 'INVALID' | 'BLURRY'>('PENDING');
+  const [errorPopup, setErrorPopup] = useState<ErrorPopupProps | null>(null);
 
   const uploadDocument = async (file: File, type: 'PAN' | 'AADHAAR') => {
       const form = new FormData();
@@ -22,8 +135,6 @@ const StepKYC = () => {
       form.append('documentType', type);
       
       try {
-          // Use the real KYC upload endpoint
-          // We must pass 'enteredNumber' for validation against OCR
           if (type === 'PAN') form.append('enteredNumber', formData.panNumber);
           if (type === 'AADHAAR') form.append('enteredNumber', formData.aadhaarNumber);
 
@@ -40,6 +151,21 @@ const StepKYC = () => {
   const panResult = validatePAN(formData.panNumber);
   const aadhaarResult = validateAadhaar(formData.aadhaarNumber);
 
+  const showError = (docType: string, res: any) => {
+    setErrorPopup({
+      title: `${docType} Verification Failed`,
+      documentType: docType,
+      confidenceScore: res.data?.confidenceScore || 0,
+      riskFactors: res.data?.riskFactors || ['Verification failed'],
+      identityMismatch: res.data?.identityMismatch || false,
+      extractedName: res.data?.extractedName || '',
+      extractedDOB: res.data?.extractedDOB || '',
+      userFullName: formData.fullName,
+      userDOB: formData.dob,
+      onClose: () => setErrorPopup(null),
+    });
+  };
+
   const handleVerifyDocuments = async () => {
     setVerifying(true);
     setVerifyStage('Uploading and analyzing documents...');
@@ -49,14 +175,22 @@ const StepKYC = () => {
             setVerifyStage('Verifying PAN Card...');
              const res = await uploadDocument(panFile, 'PAN');
              if (res.success && res.data.validationStatus === 'VALID') {
-                updateFormData({ panVerified: true });
+                updateFormData({
+                  panVerified: true,
+                  panExtractedName: res.data.extractedName || '',
+                  panExtractedDOB: res.data.extractedDOB || '',
+                  identityMismatch: res.data.identityMismatch || false,
+                });
                 setPanStatus('VALID');
-                // Could show toast with score
              } else {
                  setPanStatus('INVALID');
-                 const factors = res.data?.riskFactors?.join(', ') || 'Unknown error';
-                 alert(`PAN Verification Failed: Low Confidence (${res.data?.confidenceScore}%). Issues: ${factors}`);
+                 updateFormData({
+                   panExtractedName: res.data?.extractedName || '',
+                   panExtractedDOB: res.data?.extractedDOB || '',
+                   identityMismatch: res.data?.identityMismatch || false,
+                 });
                  setVerifying(false);
+                 showError('PAN Card', res);
                  return;
              }
         }
@@ -65,19 +199,22 @@ const StepKYC = () => {
              setVerifyStage('Verifying Aadhaar Card...');
              const res = await uploadDocument(aadhaarFile, 'AADHAAR');
              if (res.success && res.data.validationStatus === 'VALID') {
-                 updateFormData({ aadhaarVerified: true });
+                 updateFormData({
+                   aadhaarVerified: true,
+                   aadhaarExtractedName: res.data.extractedName || '',
+                   aadhaarExtractedDOB: res.data.extractedDOB || '',
+                   identityMismatch: res.data.identityMismatch || false,
+                 });
                  setAadhaarStatus('VALID');
              } else {
                  setAadhaarStatus('INVALID');
-                 const factors = res.data?.riskFactors?.join(', ') || 'Unknown error';
-                 alert(`Aadhaar Verification Failed: Low Confidence (${res.data?.confidenceScore}%). Issues: ${factors}`);
                  setVerifying(false);
+                 showError('Aadhaar Card', res);
                  return;
              }
             }
 
         setVerifyStage('Performing liveness detection...');
-        // Mock liveness for now as it's complex to do real face auth without specialized SDKs
         setTimeout(() => {
             updateFormData({ faceVerified: true });
             setVerifying(false);
@@ -85,7 +222,14 @@ const StepKYC = () => {
 
     } catch (e) {
         setVerifying(false);
-        alert("Verification failed due to server error");
+        setErrorPopup({
+          title: 'Server Error',
+          documentType: 'Document',
+          confidenceScore: 0,
+          riskFactors: ['Verification failed due to a server error. Please try again later.'],
+          identityMismatch: false,
+          onClose: () => setErrorPopup(null),
+        });
     }
   };
   
@@ -101,6 +245,9 @@ const StepKYC = () => {
 
   return (
     <div className="space-y-5">
+      {/* Error Popup */}
+      {errorPopup && <ErrorPopup {...errorPopup} />}
+
       <div className="flex items-center gap-3">
         <FileCheck2 className="w-6 h-6 text-accent" />
         <div>

@@ -79,7 +79,15 @@ const applicationSchema = new mongoose.Schema({
     panConfidenceScore: Number,
     aadhaarConfidenceScore: Number,
     panStatus: String,
-    aadhaarStatus: String
+    aadhaarStatus: String,
+    // OCR extracted data for identity matching
+    panExtractedName: String,
+    panExtractedDOB: String,
+    aadhaarExtractedName: String,
+    aadhaarExtractedDOB: String,
+    // Identity verification results
+    identityVerified: { type: Boolean, default: false },
+    identityMismatch: { type: Boolean, default: false }
   },
 
   // STEP 6: Employment

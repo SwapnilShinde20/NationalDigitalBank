@@ -4,6 +4,104 @@ const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 
 // ───────────────────────────────────────────────────────────
+//  IDENTITY MATCHING UTILITIES
+// ───────────────────────────────────────────────────────────
+
+/**
+ * Compare two names using word-overlap similarity.
+ * Returns a percentage (0–100).
+ */
+function nameSimilarity(name1, name2) {
+  if (!name1 || !name2) return 0;
+
+  const normalize = (s) =>
+    s.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
+
+  const words1 = normalize(name1);
+  const words2 = normalize(name2);
+
+  if (words1.length === 0 || words2.length === 0) return 0;
+
+  const set2 = new Set(words2);
+  let matches = 0;
+  for (const w of words1) {
+    if (set2.has(w)) matches++;
+  }
+
+  // Percentage based on the longer list to avoid gaming with short names
+  const maxLen = Math.max(words1.length, words2.length);
+  return Math.round((matches / maxLen) * 100);
+}
+
+/**
+ * Compare two dates ignoring format differences.
+ * Returns true if they represent the same calendar date.
+ */
+function dobMatch(dob1, dob2) {
+  if (!dob1 || !dob2) return false;
+
+  const d1 = new Date(dob1);
+  const d2 = new Date(dob2);
+
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return false;
+
+  return (
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+  );
+}
+
+/**
+ * Run identity verification against personal info.
+ * Returns { identityVerified, identityMismatch, mismatches[] }
+ */
+function verifyIdentity(application) {
+  const fullName = application.personalInfo?.fullName || '';
+  const userDOB  = application.personalInfo?.dob || '';
+  const mismatches = [];
+
+  // --- PAN identity check ---
+  const panName = application.kyc?.panExtractedName;
+  const panDOB  = application.kyc?.panExtractedDOB;
+
+  if (panName) {
+    const sim = nameSimilarity(fullName, panName);
+    if (sim < 70) {
+      mismatches.push(`PAN name mismatch (similarity ${sim}%): "${panName}" vs "${fullName}"`);
+    }
+  }
+  if (panDOB) {
+    if (!dobMatch(userDOB, panDOB)) {
+      mismatches.push(`PAN DOB mismatch: "${panDOB}" vs "${userDOB}"`);
+    }
+  }
+
+  // --- Aadhaar identity check ---
+  const aadhaarName = application.kyc?.aadhaarExtractedName;
+  const aadhaarDOB  = application.kyc?.aadhaarExtractedDOB;
+
+  if (aadhaarName) {
+    const sim = nameSimilarity(fullName, aadhaarName);
+    if (sim < 70) {
+      mismatches.push(`Aadhaar name mismatch (similarity ${sim}%): "${aadhaarName}" vs "${fullName}"`);
+    }
+  }
+  if (aadhaarDOB) {
+    if (!dobMatch(userDOB, aadhaarDOB)) {
+      mismatches.push(`Aadhaar DOB mismatch: "${aadhaarDOB}" vs "${userDOB}"`);
+    }
+  }
+
+  const identityMismatch = mismatches.length > 0;
+  return {
+    identityVerified: !identityMismatch,
+    identityMismatch,
+    mismatches,
+  };
+}
+
+// ───────────────────────────────────────────────────────────
 //  RISK SCORING ENGINE  (Higher score = Higher risk, 0–100)
 // ───────────────────────────────────────────────────────────
 
@@ -24,7 +122,13 @@ const calculateRiskScore = (application) => {
     factors.push('Aadhaar not verified');
   }
 
-  // ── 2. Contact Verification Risk (up to 35 pts) ──
+  // ── 2. Identity Mismatch Risk – Critical (up to 70 pts) ──
+  if (application.kyc?.identityMismatch) {
+    score += 70;
+    factors.push('Identity mismatch between provided information and KYC documents');
+  }
+
+  // ── 3. Contact Verification Risk (up to 35 pts) ──
   if (!application.verification?.mobileVerified) {
     score += 20;
     factors.push('Mobile not verified');
@@ -34,14 +138,14 @@ const calculateRiskScore = (application) => {
     factors.push('Email not verified');
   }
 
-  // ── 3. Address Completeness Risk (up to 25 pts) ──
+  // ── 4. Address Completeness Risk (up to 25 pts) ──
   const addr = application.address?.currentAddress;
   if (!addr?.line1 || !addr?.city || !addr?.pinCode) {
     score += 25;
     factors.push('Address incomplete');
   }
 
-  // ── 4. Income Risk (up to 30 pts) ──
+  // ── 5. Income Risk (up to 30 pts) ──
   const income = (application.personalInfo?.annualIncome || '').toLowerCase();
   if (income.includes('0-3') || income.includes('below') || income === '') {
     score += 30;
@@ -50,11 +154,10 @@ const calculateRiskScore = (application) => {
     score += 15;
     factors.push('Moderate income range (3\u201310 L)');
   } else {
-    // >10 L
     score += 5;
   }
 
-  // ── 5. PEP Risk – Critical (up to 60 pts) ──
+  // ── 6. PEP Risk – Critical (up to 60 pts) ──
   if (application.employment?.pepDeclaration === true) {
     score += 60;
     factors.push('Politically Exposed Person (PEP)');
@@ -96,7 +199,12 @@ const calculateComplianceScore = (user, application) => {
   const addr = application.address?.currentAddress;
   if (addr?.line1 && addr?.city && addr?.pinCode) score += 10;
 
-  return Math.min(score, 100);
+  // ── Identity mismatch penalty (−40 pts) ──
+  if (application.kyc?.identityMismatch) {
+    score -= 40;
+  }
+
+  return Math.max(0, Math.min(score, 100));
 };
 
 // ───────────────────────────────────────────────────────────
@@ -182,17 +290,44 @@ exports.uploadDocument = async (req, res) => {
         validationStatus = 'BLURRY';
     } else {
         validationStatus = 'VALID';
+        if (!application.kyc) application.kyc = {};
+
         if (documentType === 'PAN') {
-            extractedData = { panNumber: 'ABCDE1234F', name: 'MOCK USER' };
-            if (!application.kyc) application.kyc = {};
-            application.kyc.panNumber = 'ABCDE1234F';
-            application.kyc.panStatus = 'verified';
+            // Simulate OCR: extract name & DOB from PAN card
+            const userFullName = application.personalInfo?.fullName || 'MOCK USER';
+            const userDOB      = application.personalInfo?.dob
+              ? new Date(application.personalInfo.dob).toISOString().split('T')[0]
+              : '1990-01-01';
+
+            extractedData = {
+              panNumber: 'ABCDE1234F',
+              name: userFullName.toUpperCase(),
+              dob: userDOB,
+            };
+
+            application.kyc.panNumber        = 'ABCDE1234F';
+            application.kyc.panStatus        = 'verified';
+            application.kyc.panExtractedName = extractedData.name;
+            application.kyc.panExtractedDOB  = extractedData.dob;
             application.markModified('kyc');
+
         } else if (documentType === 'AADHAAR') {
-            extractedData = { aadhaarNumber: '123456789012' };
-            if (!application.kyc) application.kyc = {};
-            application.kyc.aadhaarNumber = '123456789012';
-            application.kyc.aadhaarStatus = 'verified';
+            // Simulate OCR: extract name & DOB from Aadhaar card
+            const userFullName = application.personalInfo?.fullName || 'MOCK USER';
+            const userDOB      = application.personalInfo?.dob
+              ? new Date(application.personalInfo.dob).toISOString().split('T')[0]
+              : '1990-01-01';
+
+            extractedData = {
+              aadhaarNumber: '123456789012',
+              name: userFullName.toUpperCase(),
+              dob: userDOB,
+            };
+
+            application.kyc.aadhaarNumber        = '123456789012';
+            application.kyc.aadhaarStatus        = 'verified';
+            application.kyc.aadhaarExtractedName = extractedData.name;
+            application.kyc.aadhaarExtractedDOB  = extractedData.dob;
             application.markModified('kyc');
         }
     }
@@ -231,16 +366,35 @@ exports.submitApplication = async (req, res) => {
 
         if (!application) return res.status(404).json({ message: 'No application found' });
 
+        // ── Identity Verification ──
+        const identity = verifyIdentity(application);
+
+        application.kyc = {
+          ...(application.kyc || {}),
+          identityVerified: identity.identityVerified,
+          identityMismatch: identity.identityMismatch,
+        };
+        application.markModified('kyc');
+
         // ── Calculate Risk & Compliance ──
         const user = await User.findById(userId);
         const { riskScore, riskLevel, riskFactors } = calculateRiskScore(application);
-        const complianceScore = calculateComplianceScore(user, application);
+        let complianceScore = calculateComplianceScore(user, application);
+
+        // Append identity mismatch details to risk factors
+        if (identity.identityMismatch) {
+            for (const m of identity.mismatches) {
+                if (!riskFactors.includes(m)) riskFactors.push(m);
+            }
+        }
 
         // ── AI Decision Logic (recommendation only – admin approves) ──
         const finalStatus = 'SUBMITTED';
         let aiDecision = '';
 
-        if (complianceScore >= 80 && riskLevel === 'LOW') {
+        if (identity.identityMismatch) {
+            aiDecision = 'High Risk \u2013 Identity mismatch detected between personal info and KYC documents';
+        } else if (complianceScore >= 80 && riskLevel === 'LOW') {
             aiDecision = 'AI Recommends Approval \u2013 Low Risk, High Compliance';
         } else if (riskLevel === 'HIGH') {
             aiDecision = 'AI Escalated \u2013 High Risk Detected';
@@ -255,7 +409,7 @@ exports.submitApplication = async (req, res) => {
             complianceScore,
             riskFactors,
             amlStatus:   riskLevel === 'HIGH' ? 'FLAGGED' : 'CLEAR',
-            fraudStatus: 'CLEAR',
+            fraudStatus: identity.identityMismatch ? 'SUSPECTED' : 'CLEAR',
         };
         application.markModified('riskProfile');
 
@@ -273,6 +427,8 @@ exports.submitApplication = async (req, res) => {
               riskScore: String(riskScore),
               riskLevel,
               complianceScore: String(complianceScore),
+              identityVerified: String(identity.identityVerified),
+              identityMismatch: String(identity.identityMismatch),
             }
         });
 
@@ -282,6 +438,9 @@ exports.submitApplication = async (req, res) => {
             complianceScore,
             status: finalStatus,
             aiDecision,
+            identityVerified: identity.identityVerified,
+            identityMismatch: identity.identityMismatch,
+            identityMismatches: identity.mismatches,
             application,
         });
 

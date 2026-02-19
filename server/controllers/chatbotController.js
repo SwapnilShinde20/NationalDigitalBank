@@ -32,7 +32,8 @@ const stepGuidance = {
     "• **PAN Card** — for tax identification\n" +
     "• **Aadhaar Card** — for identity & address\n\n" +
     "📄 Supported formats: JPG, PNG, PDF (max 5 MB).\n" +
-    "⚡ Our AI will verify your documents instantly!",
+    "⚡ Our AI will verify your documents instantly!\n\n" +
+    "⚠️ **Important:** The name and date of birth on your documents must match the personal info you entered. Mismatched documents will be flagged.",
 
   employment:
     "💼 Tell us about your **employment & income**.\n\n" +
@@ -104,8 +105,40 @@ exports.message = async (req, res) => {
 
     // 2. If no userMessage → return proactive guidance
     if (!userMessage || !userMessage.trim()) {
+      let guidance = stepGuidance[stepName] || stepGuidance.eligibility;
+
+      // Check for identity mismatch and add proactive warning
+      if (stepName === 'kyc' || stepName === 'riskProfile') {
+        const app = applicationId
+          ? await Application.findById(applicationId)
+          : await Application.findOne({ userId });
+
+        if (app && app.kyc && app.kyc.identityMismatch) {
+          let mismatchDetails = '\n\n🚨 **Identity Mismatch Detected!**\n\n';
+          mismatchDetails += 'Our AI found that the documents you uploaded **do not match** your personal information:\n\n';
+          
+          if (app.kyc.panExtractedName && app.personalInfo?.fullName) {
+            mismatchDetails += `• **PAN Name:** ${app.kyc.panExtractedName} vs **Your Name:** ${app.personalInfo.fullName}\n`;
+          }
+          if (app.kyc.aadhaarExtractedName && app.personalInfo?.fullName) {
+            mismatchDetails += `• **Aadhaar Name:** ${app.kyc.aadhaarExtractedName} vs **Your Name:** ${app.personalInfo.fullName}\n`;
+          }
+          if (app.kyc.panExtractedDOB && app.personalInfo?.dob) {
+            mismatchDetails += `• **PAN DOB:** ${app.kyc.panExtractedDOB} vs **Your DOB:** ${new Date(app.personalInfo.dob).toLocaleDateString()}\n`;
+          }
+          if (app.kyc.aadhaarExtractedDOB && app.personalInfo?.dob) {
+            mismatchDetails += `• **Aadhaar DOB:** ${app.kyc.aadhaarExtractedDOB} vs **Your DOB:** ${new Date(app.personalInfo.dob).toLocaleDateString()}\n`;
+          }
+          
+          mismatchDetails += '\n❌ **This will significantly increase your risk score** and may result in application rejection.\n';
+          mismatchDetails += '\n✅ **What to do:** Go back and upload documents that belong to **you** — with a name and DOB matching your personal details.';
+          
+          guidance += mismatchDetails;
+        }
+      }
+
       return res.json({
-        reply: stepGuidance[stepName] || stepGuidance.eligibility,
+        reply: guidance,
         step: stepName,
         proactive: true,
       });
@@ -134,6 +167,16 @@ exports.message = async (req, res) => {
       systemPrompt += `- Risk Level: ${application.riskProfile?.riskLevel || 'Not calculated'}\n`;
       systemPrompt += `- Risk Score: ${application.riskProfile?.riskScore ?? 'N/A'}\n`;
       systemPrompt += `- Compliance Score: ${application.riskProfile?.complianceScore ?? 'N/A'}\n`;
+
+      // Identity mismatch context for Groq
+      if (application.kyc?.identityMismatch) {
+        systemPrompt += `\n⚠️ IDENTITY MISMATCH DETECTED:\n`;
+        systemPrompt += `The user uploaded KYC documents belonging to a DIFFERENT person.\n`;
+        if (application.kyc.panExtractedName) systemPrompt += `- PAN shows name: "${application.kyc.panExtractedName}" but user entered: "${application.personalInfo?.fullName}"\n`;
+        if (application.kyc.aadhaarExtractedName) systemPrompt += `- Aadhaar shows name: "${application.kyc.aadhaarExtractedName}" but user entered: "${application.personalInfo?.fullName}"\n`;
+        if (application.kyc.panExtractedDOB) systemPrompt += `- PAN shows DOB: "${application.kyc.panExtractedDOB}" but user entered: "${application.personalInfo?.dob}"\n`;
+        systemPrompt += `\nExplain this issue clearly and tell them they MUST upload their own documents with matching name and DOB. This is a serious compliance issue.\n`;
+      }
     }
 
     const messages = [

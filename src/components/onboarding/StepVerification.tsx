@@ -54,7 +54,6 @@ const StepVerification = () => {
     try {
       setVerifyingMobileOtp(true);
       const res = await api.post('/auth/verify-otp', { identifier: formData.mobileNumber, type: 'mobile', otp: mobileOtp });
-      localStorage.setItem('token', res.data.token);
       updateFormData({ otpVerified: true });
       toast({ title: 'Verified', description: 'Mobile number verified successfully.' });
     } catch (error) {

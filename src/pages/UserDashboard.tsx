@@ -8,6 +8,7 @@ import {
   XCircle, Edit3, Send, ArrowRight, LogOut, Plus,
   Phone, Mail, MapPin, Briefcase, ChevronRight, ArrowLeft, Eye
 } from 'lucide-react';
+import { useOnboarding } from '@/context/OnboardingContext';
 
 type AppStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
@@ -22,6 +23,7 @@ type View = 'home' | 'account-detail' | 'update-info';
 
 const UserDashboard = () => {
   const navigate = useNavigate();
+  const { logout } = useOnboarding();
   const [app, setApp] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>('home');
@@ -65,8 +67,8 @@ const UserDashboard = () => {
     setSubmitting(false);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
+  const logoutHandler = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -104,7 +106,7 @@ const UserDashboard = () => {
               <h1 className="text-lg font-bold text-foreground">My Dashboard</h1>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>
+          <Button variant="ghost" size="sm" onClick={logoutHandler}>
             <LogOut className="w-4 h-4 mr-1" /> Logout
           </Button>
         </div>

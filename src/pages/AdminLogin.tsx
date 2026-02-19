@@ -5,10 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { Shield, Lock, Loader2 } from 'lucide-react';
+import { useOnboarding } from '@/context/OnboardingContext';
 
 const AdminLogin = () => {
     const navigate = useNavigate();
     const { toast } = useToast();
+    const { refreshAuth } = useOnboarding();
     
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -17,15 +19,18 @@ const AdminLogin = () => {
     const handleLogin = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/login`, {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const res = await fetch(`${apiUrl}/api/admin/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
+                credentials: 'include' // Important for cookies
             });
             const data = await res.json();
-            if (res.ok && data.token) {
-                localStorage.setItem('adminToken', data.token);
-                localStorage.setItem('token', data.token);
+            if (res.ok && data.success) {
+                // Refresh session in context
+                await refreshAuth();
+                
                 toast({ title: 'Welcome Officer', description: 'Access granted to Admin Panel.' });
                 navigate('/admin');
             } else {
@@ -44,8 +49,6 @@ const AdminLogin = () => {
                     <Shield className="w-12 h-12 text-red-500 mx-auto mb-3" />
                     <h1 className="text-xl font-bold">Restricted Access</h1>
                     <p className="text-sm text-slate-400">Bank Officer Portal</p>
-                    <div>mail-admin@ndb.gov.in</div>
-                    <div>admin123</div>
                 </div>
                 
                 <div className="p-8 space-y-6">

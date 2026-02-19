@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 
 dotenv.config();
 
@@ -13,14 +14,15 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
+app.use(cookieParser());
 const corsOptions = {
-  origin: [
+  origin:  [
     "http://localhost:8080",
     "http://localhost:8081",
-    "https://national-digital-bank-jmw2.vercel.app"
+    "https://national-digital-bank.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
   credentials: true
 };
 app.use(cors(corsOptions));

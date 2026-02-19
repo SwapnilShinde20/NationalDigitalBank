@@ -3,7 +3,7 @@ const AuditLog = require('../models/AuditLog');
 
 exports.getAllApplications = async (req, res) => {
   try {
-    const applications = await Application.find()
+    const applications = await Application.find({ status: { $in: ['SUBMITTED', 'APPROVED', 'REJECTED', 'REVIEW'] } })
       .populate('userId', 'mobile email')
       .sort({ createdAt: -1 });
     res.json(applications);

@@ -11,7 +11,7 @@ import { useOnboarding } from '@/context/OnboardingContext';
 const Login = () => {
     const navigate = useNavigate();
     const { toast } = useToast();
-    const { updateFormData } = useOnboarding();
+    const { updateFormData, refreshAuth } = useOnboarding();
     
     const [mobile, setMobile] = useState('');
     const [otp, setOtp] = useState('');
@@ -45,7 +45,9 @@ const Login = () => {
         setLoading(true);
         try {
             const res = await api.post('/auth/verify-mobile-otp', { mobile, otp });
-            localStorage.setItem('token', res.data.token);
+            
+            // Refresh session in context to update isAuthenticated
+            await refreshAuth();
             
             // Update context with basic info
             updateFormData({ mobileNumber: mobile, otpVerified: true });

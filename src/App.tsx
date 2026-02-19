@@ -12,14 +12,32 @@ import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import EmailVerificationSuccess from "./pages/EmailVerificationSuccess";
 import UserDashboard from "./pages/UserDashboard";
+import { useOnboarding } from "./context/OnboardingContext";
 
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children, type }: { children: JSX.Element, type: 'user' | 'admin' }) => {
-    const token = localStorage.getItem(type === 'user' ? 'token' : 'adminToken');
-    if (!token) {
+    const { isAuthenticated, isAdmin, authLoading } = useOnboarding();
+    
+    if (authLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center banking-gradient">
+                <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl shadow-2xl text-center">
+                    <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="font-semibold text-accent">Securing Session...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
         return <Navigate to={type === 'user' ? '/login' : '/admin/login'} replace />;
     }
+
+    if (type === 'admin' && !isAdmin) {
+        return <Navigate to="/login" replace />;
+    }
+
     return children;
 };
 

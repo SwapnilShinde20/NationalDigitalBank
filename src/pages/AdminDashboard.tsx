@@ -6,6 +6,7 @@ import {
   Shield, Eye, Brain, Search, Filter, CheckCircle2, XCircle,
   AlertTriangle, LogOut, Info
 } from 'lucide-react';
+import { useOnboarding } from '@/context/OnboardingContext';
 
 const riskBadge: Record<string, string> = {
   Low: 'bg-green-100 text-green-700 border border-green-200',
@@ -23,6 +24,7 @@ const statusBadge: Record<string, { label: string; cls: string }> = {
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { logout } = useOnboarding();
   const [applications, setApplications] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [search, setSearch] = useState('');
@@ -72,9 +74,8 @@ const AdminDashboard = () => {
     return true;
   });
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('adminToken');
+  const logoutHandler = async () => {
+    await logout();
     navigate('/admin/login');
   };
 
@@ -105,7 +106,7 @@ const AdminDashboard = () => {
             <span className="text-[10px] px-3 py-1 rounded-full border border-cyan-500/50 text-cyan-400 font-semibold flex items-center gap-1">
               <Brain className="w-3 h-3" /> AI Engine Active
             </span>
-            <button onClick={logout} className="ml-2 p-1.5 rounded hover:bg-white/10 transition-colors text-gray-400 hover:text-white">
+            <button onClick={logoutHandler} className="ml-2 p-1.5 rounded hover:bg-white/10 transition-colors text-gray-400 hover:text-white">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
